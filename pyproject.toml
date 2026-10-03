@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miwl2-desktop"
+version = "0.1.0"
+description = "A local desktop writing workspace with Ollama and a labelled fixture provider."
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "third_party/*.txt"]
+authors = [{name = "Aekam"}]
+dependencies = ["PySide6-Essentials>=6.8,<7", "certifi>=2025.1", "opencv-python-headless==4.14.0.94", "numpy==2.5.3", "cryptography==49.0.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "ruff>=0.9,<1", "mypy>=1.14,<2"]
+
+[project.scripts]
+miwl2 = "miwl2.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+miwl2 = ["ui/*.qml", "assets/*.png", "assets/*.icns"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/miwl2"]

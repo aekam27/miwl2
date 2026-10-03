@@ -1,0 +1,40 @@
+# Local environments and build products
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+.DS_Store
+
+# Credentials, local configuration and private workspaces
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*-data/
+.*-data/
+*.sqlite*
+*.db
+*.db-*
+*.log
+*.wav
+*.mov
+*.mp4
+*.m4v
+*.mp3
+
+# Downloaded runtimes, model weights and generated evidence
+.runtime/
+*.onnx
+*.gguf
+*.ggml
+ggml-*.bin
+evidence/*
+!evidence/.gitkeep

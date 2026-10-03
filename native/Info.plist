@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>org.aekam.miwl2.voice</string>
+<key>CFBundleName</key><string>Miwl Voice</string>
+<key>CFBundleExecutable</key><string>MiwlVoice</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSUIElement</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>Record only when you choose Record in Miwl. Audio is transcribed locally and discarded after transcription or cancellation.</string>
+</dict></plist>

@@ -1,0 +1,55 @@
+{
+  "weights_distributed": false,
+  "automatic_downloads": false,
+  "voice": {
+    "runtime_source": "https://github.com/ggml-org/whisper.cpp",
+    "runtime_commit": "60c0be6ac8fa71b1a2ae2dd938a31a34a508e774",
+    "runtime_license": "MIT",
+    "model_file": "ggml-base.bin",
+    "model_source": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+    "model_bytes": 147951465,
+    "model_sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+    "model_license": "MIT",
+    "model_license_reference": "https://github.com/openai/whisper/blob/main/LICENSE",
+    "hash_enforcement": "Manual optional-setup verification; current voice loader checks availability."
+  },
+  "vision": {
+    "source_repository": "https://github.com/opencv/opencv_zoo",
+    "source_commit": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+    "models": [
+      {
+        "file": "face_detection_yunet_2023mar.onnx",
+        "bytes": 232589,
+        "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+        "source": "https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+        "license": "MIT"
+      },
+      {
+        "file": "face_recognition_sface_2021dec.onnx",
+        "bytes": 38696353,
+        "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+        "source": "https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+        "license": "Apache-2.0"
+      }
+    ],
+    "hash_enforcement": "Vision loader rejects a different SHA-256 before inference."
+  },
+  "writing": {
+    "runtime": "Ollama",
+    "runtime_source": "https://github.com/ollama/ollama",
+    "reference_model": "gemma3:4b",
+    "reference_quantization": "Q4_K_M",
+    "reference_registry_manifest_digest": "sha256:a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a",
+    "digest_note": "Observed Ollama registry manifest digest, not a redistributed file hash; tags can change and app does not enforce this digest.",
+    "model_source": "https://ollama.com/library/gemma3:4b",
+    "model_terms": "https://ai.google.dev/gemma/terms",
+    "terms_review": "User must review current upstream terms before downloading. No acceptance is performed by this repository."
+  },
+  "embedding": {
+    "installed": false,
+    "required": false,
+    "model_name": "EmbeddingGemma",
+    "terms_reference": "https://ai.google.dev/gemma/terms",
+    "status": "Future optional research; retrieval currently uses FTS5/BM25."
+  }
+}
