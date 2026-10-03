@@ -17,6 +17,7 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtTest import QTest
 from shiboken6 import delete
 from test_cameras import StreamFixture, stream_fixture
+from test_core import ControlledProvider
 
 from miwl2.bridge import SAMPLE_SOURCE, WorkspaceBridge
 from miwl2.camera_ui import CameraBridge, CameraImages
@@ -139,7 +140,8 @@ def click(app: QGuiApplication, window: QQuickWindow, name: str) -> None:
                     ),
                 )
                 QTest.qWait(20)
-            break
+            # Nested lists can sit inside another scrolling viewport. Make the
+            # control reachable through every clipping ancestor before clicking.
         ancestor = ancestor.parentItem()
     point = target.mapToScene(QPointF(target.width() / 2, target.height() / 2))
     QTest.mouseClick(
@@ -498,11 +500,16 @@ def test_responsive_layout_keeps_composer_and_source_reachable(
 def test_visible_provider_controls_cancellation_failure_and_retry(
     app: QGuiApplication, bridge: WorkspaceBridge, ui: QQuickWindow
 ) -> None:
+    original_provider = bridge.service.provider
+    controlled = ControlledProvider()
+    bridge.service.provider = controlled
     click(app, ui, "sampleButton")
     click(app, ui, "summarizeButton")
     click(app, ui, "sendButton")
+    controlled.release.set()
     settle(app, bridge)
     assert bridge.service.store.last_job(bridge.currentSessionId)["state"] == "cancelled"
+    bridge.service.provider = original_provider
     click(app, ui, "providerButton")
     QTest.qWait(20)
     click(app, ui, "failureToggle")

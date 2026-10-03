@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -102,7 +103,8 @@ def run() -> None:
         }
     )
     # Exercise the actual service: cooperative Stop preserves a saved edited draft.
-    store = Store(Path(".inference-data/benchmark.sqlite3"))
+    temporary = tempfile.TemporaryDirectory(prefix="miwl2-local-benchmark-")
+    store = Store(Path(temporary.name) / "workspace.sqlite3")
     service = WorkspaceService(store, provider)
     try:
         session = store.create_session()
@@ -131,6 +133,7 @@ def run() -> None:
         assert cancellation["state"] == JobState.CANCELLED and cancellation["saved_draft_preserved"]
     finally:
         service.shutdown()
+        temporary.cleanup()
     missing_error = ""
     try:
         list(

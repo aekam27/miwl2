@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "miwl2-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "A local desktop writing workspace with Ollama and a labelled fixture provider."
 requires-python = ">=3.12"
 license = "MIT"

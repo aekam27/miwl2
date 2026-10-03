@@ -8,6 +8,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 build/
+.build/
 dist/
 .DS_Store
 
@@ -32,6 +33,7 @@ dist/
 
 # Downloaded runtimes, model weights and generated evidence
 .runtime/
+.runtime
 *.onnx
 *.gguf
 *.ggml

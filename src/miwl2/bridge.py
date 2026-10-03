@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sqlite3
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
@@ -11,6 +13,7 @@ from miwl2.configuration import ProviderConfiguration
 from miwl2.domain import JobState, Operation
 from miwl2.providers import TEST_LABEL
 from miwl2.service import WorkspaceService
+from miwl2.storage import StorageError
 
 SAMPLE_SOURCE = (
     "Miwl 2 keeps source text, conversations, and editable outputs in a local workspace. "
@@ -42,7 +45,7 @@ class WorkspaceBridge(QObject):
         self._last_job: dict[str, Any] | None = None
         self._validation_error = ""
         self._dismissed_job = ""
-        self._notice = ""
+        self._notice = service.store.configuration_warning
         self._simulate_failure = False
         self._provider_error = ""
         self.voice_busy: Callable[[], bool] = lambda: False
@@ -149,6 +152,8 @@ class WorkspaceBridge(QObject):
 
     @Property(str, notify=contextChanged)
     def errorMessage(self) -> str:
+        if self.service.persistence_error:
+            return self.service.persistence_error
         if self._validation_error:
             return self._validation_error
         if (
@@ -177,7 +182,23 @@ class WorkspaceBridge(QObject):
 
     @Property(str, notify=contextChanged)
     def noticeMessage(self) -> str:
-        return self._notice
+        if self._notice:
+            return self._notice
+        if self._last_job:
+            omitted = json.loads(self._last_job["request"]).get("omitted_history_turns", 0)
+            if omitted:
+                return f"Using recent conversation · {omitted // 2} older exchanges omitted"
+        return ""
+
+    @Slot()
+    def backupWorkspace(self) -> None:
+        try:
+            self.service.store.backup()
+            self._notice = "Writing backed up · latest five copies in writing-backups"
+            QTimer.singleShot(6500, self._clear_notice)
+        except (OSError, sqlite3.Error, StorageError) as exception:
+            self._notice = f"Writing backup failed: {exception}"
+        self.contextChanged.emit()
 
     @Property(bool, notify=contextChanged)
     def simulateFailure(self) -> bool:
@@ -245,13 +266,29 @@ class WorkspaceBridge(QObject):
 
     @Slot(str)
     def updateSource(self, source: str) -> None:
-        self.service.update_source(self._current_id, source)
-        self.refresh()
+        try:
+            self.service.update_source(self._current_id, source)
+        except sqlite3.Error as exception:
+            self._validation_error = (
+                f"Source could not be saved: {exception}. Copy your edits before closing."
+            )
+            self.contextChanged.emit()
+        else:
+            self._validation_error = ""
+            self.refresh()
 
     @Slot(str)
     def updateResult(self, result: str) -> None:
-        self.service.update_result(self._current_id, result)
-        self.refresh()
+        try:
+            self.service.update_result(self._current_id, result)
+        except sqlite3.Error as exception:
+            self._validation_error = (
+                f"Draft could not be saved: {exception}. Copy your edits before closing."
+            )
+            self.contextChanged.emit()
+        else:
+            self._validation_error = ""
+            self.refresh()
 
     @Slot()
     def loadSample(self) -> None:
