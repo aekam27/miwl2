@@ -1,6 +1,24 @@
 # Verification scope
 
-Source checkpoint: **136 regression tests passed** on Apple Silicon macOS with
+## October 6 worker-dispatch regression
+
+A failed Python worker-thread start now marks the response failed, releases the
+active job and preserves saved writing. Retrying does not run the abandoned
+queue item. If saving the failure also fails, further requests remain blocked
+until reopening the workspace.
+
+Both new tests failed against the October 4 source and pass with this change.
+The affected storage/service tests pass **32 tests**; the aggregate run passes
+**114 non-UI tests** using fictional temporary databases and synthetic loopback
+servers. Ruff check/format (50 files), strict mypy (21 modules), and diff checks
+pass. The 50 Qt window tests were excluded because UI launch was outside this
+run's scope. The previous full-suite checkpoint was **162 tests on October 4**;
+this is not a claim that the expanded 164-test suite was run in full. Native
+macOS Quit/Cmd-Q remains untested.
+
+## Earlier source checkpoint
+
+The initial source checkpoint passed **136 regression tests** on Apple Silicon macOS with
 Python 3.13, Qt 6.11 and the locked dependency set. Ruff check/format and strict
 mypy pass across 20 source modules. This is a development checkpoint, not a
 production certification or accuracy benchmark.

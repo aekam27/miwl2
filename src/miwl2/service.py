@@ -126,7 +126,30 @@ class WorkspaceService:
             job = ActiveJob(job_id, session_id, message_id, request, Event())
             self._active = job
             self.on_change()
-            self._executor.submit(self._run, job)
+            try:
+                self._executor.submit(self._run, job)
+            except RuntimeError:
+                # An executor can enqueue work before failing to start its worker.
+                # Retire that job even if a later submission drains the old queue item.
+                job.cancel.set()
+                job.state = JobState.FAILED
+                try:
+                    self.store.finish_job(
+                        job.id,
+                        JobState.FAILED,
+                        "",
+                        "The response worker could not start. Retry this response "
+                        "when the computer has available resources.",
+                    )
+                except sqlite3.Error as exception:
+                    self.persistence_error = (
+                        f"The response failure could not be saved: {exception}. "
+                        "Your prior draft is retained. Check storage space/permissions, "
+                        "then reopen this workspace before sending again."
+                    )
+                finally:
+                    self._active = None
+                self.on_change()
             return job_id
 
     def retry(self, session_id: str, *, cloud_authorized: bool = False) -> str:
@@ -179,6 +202,9 @@ class WorkspaceService:
                 self.on_change()
 
     def _run(self, job: ActiveJob) -> None:
+        with self._lock:
+            if self._active is not job:
+                return
         error = ""
         try:
             self._state(job, JobState.LOADING)
