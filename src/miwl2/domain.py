@@ -46,6 +46,7 @@ class ProviderRequest:
     history: tuple[Turn, ...] = ()
     previous_result: str = ""
     simulate_error: bool = False
+    omitted_history_turns: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
@@ -12,6 +14,13 @@ from uuid import uuid4
 
 from miwl2.configuration import ProviderConfiguration
 from miwl2.domain import JobState, Operation, ProviderInfo, ProviderRequest
+
+SCHEMA_VERSION = 2
+BACKUP_LIMIT = 5
+
+
+class StorageError(RuntimeError):
+    """A workspace needs attention before it can be opened safely."""
 
 
 def timestamp() -> str:
@@ -22,12 +31,32 @@ class Store:
     """Short transactions with one application writer and per-operation connections."""
 
     def __init__(self, path: Path) -> None:
-        self.path = path
+        self.path = path.absolute()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
+        self.configuration_warning = ""
+        if self.path.is_symlink():
+            raise StorageError("The writing database must be a regular file, not a symlink.")
+        existed = self.path.exists()
+        version = 0
+        if existed:
+            with closing(sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)) as existing:
+                version = int(existing.execute("PRAGMA user_version").fetchone()[0])
+            if version > SCHEMA_VERSION:
+                raise StorageError(
+                    f"This workspace uses schema {version}; this app supports {SCHEMA_VERSION}. "
+                    "Open it with a newer Miwl version. The database was not changed."
+                )
+        else:
+            descriptor = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.close(descriptor)
+        self.path.chmod(0o600)
+        if existed and version < SCHEMA_VERSION:
+            self.backup("before-migration")
         with self.connection() as connection:
-            connection.executescript("""
-                PRAGMA journal_mode=WAL;
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("BEGIN IMMEDIATE")
+            schema = """
                 CREATE TABLE IF NOT EXISTS sessions (
                     id TEXT PRIMARY KEY, title TEXT NOT NULL,
                     source TEXT NOT NULL DEFAULT '', result TEXT NOT NULL DEFAULT '',
@@ -50,24 +79,106 @@ class Store:
                 CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id, created_at);
                 CREATE INDEX IF NOT EXISTS jobs_session ON jobs(session_id, created_at);
                 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            """)
+            """
+            for statement in schema.split(";"):
+                if statement.strip():
+                    connection.execute(statement)
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(jobs)")}
             if "provider_label" not in columns:
                 connection.execute(
                     "ALTER TABLE jobs ADD COLUMN provider_label TEXT NOT NULL DEFAULT ''"
                 )
+            if "provider_is_test" not in columns:
                 connection.execute(
                     "ALTER TABLE jobs ADD COLUMN provider_is_test INTEGER NOT NULL DEFAULT 1"
                 )
-            connection.execute("PRAGMA user_version=2")
+            connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         self.recover_interrupted_jobs()
+
+    def backup(self, reason: str = "manual") -> Path:
+        """A consistent WAL-aware writing snapshot; never copies gallery or documents."""
+        if reason not in {"manual", "startup", "before-migration"}:
+            raise ValueError("Unsupported backup reason.")
+        directory = self.path.parent / "writing-backups"
+        if directory.is_symlink():
+            raise StorageError("The writing backup folder must not be a symlink.")
+        directory.mkdir(mode=0o700, exist_ok=True)
+        directory.chmod(0o700)
+        name = f"writing-{reason}-{datetime.now(UTC):%Y%m%dT%H%M%S%fZ}-{uuid4().hex}.sqlite3"
+        destination = directory / name
+        temporary = directory / ("." + name + ".tmp")
+        with self._lock:
+            descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.close(descriptor)
+            try:
+                with self.connection() as source:
+                    target = sqlite3.connect(temporary)
+                    try:
+                        source.backup(target)
+                        if target.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                            raise StorageError("The writing backup failed its integrity check.")
+                    finally:
+                        target.close()
+                with temporary.open("rb") as snapshot_file:
+                    os.fsync(snapshot_file.fileno())
+                os.replace(temporary, destination)
+                directory_fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+                snapshots = [
+                    item
+                    for item in directory.glob("writing-*.sqlite3")
+                    if re.fullmatch(
+                        r"writing-(manual|startup|before-migration)-\d{8}T\d{12}Z-"
+                        r"[0-9a-f]{32}\.sqlite3",
+                        item.name,
+                    )
+                    and item.is_file()
+                    and not item.is_symlink()
+                ]
+                # Sort by modification time because the reason precedes the date.
+                snapshots.sort(key=lambda item: item.stat().st_mtime_ns, reverse=True)
+                for snapshot in snapshots[BACKUP_LIMIT:]:
+                    if snapshot.is_file() and not snapshot.is_symlink():
+                        snapshot.unlink()
+            finally:
+                temporary.unlink(missing_ok=True)
+        return destination
+
+    def backup_if_due(self) -> Path | None:
+        """At most one automatic snapshot per UTC day; explicit backups remain available."""
+        today = datetime.now(UTC).strftime("%Y%m%d")
+        with self.connection() as connection:
+            row = connection.execute("SELECT value FROM settings WHERE key='backup_day'").fetchone()
+        if row is not None and row["value"] == today:
+            return None
+        path = self.backup("startup")
+        with self.connection() as connection:
+            connection.execute(
+                "INSERT INTO settings VALUES('backup_day',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (today,),
+            )
+        return path
 
     def provider_configuration(self) -> ProviderConfiguration:
         with self.connection() as connection:
             row = connection.execute("SELECT value FROM settings WHERE key='provider'").fetchone()
         if row is None:
             return ProviderConfiguration()
-        return ProviderConfiguration(**json.loads(row["value"])).validated()
+        try:
+            values = json.loads(row["value"])
+            if not isinstance(values, dict) or not all(isinstance(v, str) for v in values.values()):
+                raise ValueError("Invalid provider values")
+            return ProviderConfiguration(**values).validated()
+        except (ValueError, TypeError):
+            self.configuration_warning = (
+                "Saved provider settings are invalid. Test mode is active; "
+                "choose and save a writing provider to repair them."
+            )
+            return ProviderConfiguration()
 
     def save_provider_configuration(self, configuration: ProviderConfiguration) -> None:
         value = json.dumps(configuration.validated().to_dict())
@@ -77,6 +188,7 @@ class Store:
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (value,),
             )
+        self.configuration_warning = ""
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -269,6 +381,33 @@ class Store:
             connection.execute(
                 "UPDATE messages SET body=?,status=? WHERE id=?", (body, status, message_id)
             )
+
+    def finish_job(self, job_id: str, state: JobState, body: str, error: str = "") -> bool:
+        """Save a stopped/failed job and its partial message in one transaction."""
+        if state not in {JobState.CANCELLED, JobState.FAILED}:
+            raise ValueError("Use complete_job to save a completed draft.")
+        with self.connection() as connection:
+            changed = connection.execute(
+                "UPDATE jobs SET state=?,error=?,updated_at=? WHERE id=? AND state IN (?,?,?,?)",
+                (
+                    state,
+                    error,
+                    timestamp(),
+                    job_id,
+                    JobState.QUEUED,
+                    JobState.LOADING,
+                    JobState.RUNNING,
+                    JobState.CANCELLING,
+                ),
+            ).rowcount
+            if not changed:
+                return False
+            connection.execute(
+                "UPDATE messages SET body=?,status=? WHERE id="
+                "(SELECT message_id FROM jobs WHERE id=?)",
+                (body, state, job_id),
+            )
+        return True
 
     def complete_job(self, job_id: str, body: str) -> bool:
         """Commit the result only if the captured source revision is still current."""

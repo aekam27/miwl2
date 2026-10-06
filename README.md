@@ -46,11 +46,23 @@ A fresh workspace starts with the labelled fixture provider. Paste source notes,
 choose **Summarize notes**, then open **Editable draft** to edit and copy. Chat
 can refine a draft; **Write article** takes a topic and optional notes.
 The Send control becomes **Stop** during a response. Stopping a response leaves
-the completed saved draft intact. Source and result edits save automatically.
+the completed saved draft intact. Source and result edits save automatically. Startup keeps a daily writing
+snapshot; **Writing provider → Back up writing** creates an explicit copy.
+Five plaintext writing backups are retained beside the workspace. Documents
+and galleries remain separate. Older chat exchanges are omitted when needed
+to fit the request budget, with a visible notice.
 
 The editable installation is intentional: optional runtime tools resolve from
-the checkout's `.runtime` directory. A bundled application and non-editable
-runtime layout are future packaging work.
+the checkout's `.runtime` directory. A source-backed Mac launcher is available:
+
+```sh
+.venv/bin/python tools/build_mac_launcher.py
+open '.build/Miwl 2.app'
+```
+
+It uses the prepared checkout and environment. Standalone distribution and a
+non-editable runtime layout remain packaging work. See the
+[daily-use candidate and release gates](docs/DAILY_USE_READINESS.md).
 
 With no `--data-dir`, Qt chooses the platform application-data directory
 (`~/Library/Application Support/Aekam/Miwl 2` on macOS). One process can open a
@@ -98,8 +110,8 @@ is no live cloud model discovery, price estimate or cloud accuracy claim.
 .venv/bin/mypy
 ```
 
-The source checkpoint has **136 passing tests**, Ruff check/format and strict
-mypy across 20 source modules. Tests use temporary workspaces and synthetic
+The source checkpoint has **152 passing tests**, Ruff check/format and strict
+mypy across 21 source modules. Tests use temporary workspaces and synthetic
 loopback servers; environments that prohibit localhost socket binds must allow
 those fixture servers. Tests do not require microphones, cameras, actual API
 keys, paid calls or model weights. See [verification scope](docs/VERIFICATION.md).

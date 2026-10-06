@@ -1362,6 +1362,29 @@ ApplicationWindow {
                 font.pixelSize: 12
                 onToggled: window.reduceMotion = checked
             }
+            Hairline { Layout.fillWidth: true }
+            Action {
+                objectName: "backupWorkspaceButton"
+                text: "Back up writing"
+                Layout.fillWidth: true
+                onClicked: {
+                    window.flushEditors();
+                    bridge.backupWorkspace();
+                }
+            }
+            Caption {
+                Layout.fillWidth: true
+                text: "Keeps five plaintext writing snapshots beside this workspace. Documents and the gallery are separate."
+                wrapMode: Text.Wrap
+                font.pixelSize: 11
+            }
+            Caption {
+                Layout.fillWidth: true
+                visible: bridge.noticeMessage.length > 0
+                text: bridge.noticeMessage
+                wrapMode: Text.Wrap
+                font.pixelSize: 11
+            }
             RowLayout {
                 Layout.alignment: Qt.AlignRight
                 Action {

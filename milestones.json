@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "app_version": "0.1.1",
+  "updated_at_utc": "2026-10-03T08:27:25.369240+00:00",
+  "checkpoint": "Daily-use foundation candidate; review before public push",
+  "branch": "readiness/daily-use-foundation",
+  "checks": {
+    "updated_at_utc": "2026-10-03T08:23:33.555513+00:00",
+    "pytest": "152 passed in 15.19 seconds",
+    "ruff": "passed",
+    "format": "48 files checked",
+    "mypy": "21 source modules passed"
+  },
+  "implemented": [
+    "version-safe atomic migrations",
+    "WAL-aware private writing backups",
+    "bounded recent chat context",
+    "coalesced streaming saves",
+    "atomic failed/stopped job transitions",
+    "visible storage errors",
+    "source-backed ad-hoc signed Mac launcher"
+  ],
+  "native": {
+    "platform": "cocoa",
+    "viewports": [
+      [
+        1380,
+        844
+      ],
+      [
+        960,
+        720
+      ]
+    ],
+    "stop_runs": 4,
+    "saved_draft_preserved": true,
+    "failure_retry": true,
+    "backup_control": true,
+    "document_import_search_citation_confirmed_removal_runs": 2,
+    "original_document_unchanged": true,
+    "qml_warnings": []
+  },
+  "launcher": {
+    "platform": "cocoa",
+    "launch_services": true,
+    "signature": "ad-hoc verified",
+    "limitations": "Source-backed launcher and prepared environment; not standalone, Developer ID signed or notarized. Dock identity and permission attribution need manual verification."
+  },
+  "startup": {
+    "runs": [
+      {
+        "case": "fresh workspace",
+        "first_window_seconds": 0.6583637499716133,
+        "maximum_rss_bytes": 235323392,
+        "platform": "cocoa"
+      },
+      {
+        "case": "existing workspace/new process",
+        "first_window_seconds": 0.6461506249615923,
+        "maximum_rss_bytes": 238682112,
+        "platform": "cocoa"
+      },
+      {
+        "case": "existing workspace/new process",
+        "first_window_seconds": 0.6682303750421852,
+        "maximum_rss_bytes": 238190592,
+        "platform": "cocoa"
+      }
+    ],
+    "conditions": "Native Cocoa, fixture provider, 100 ms paint allowance. OS caches were not cleared; no model loaded by startup.",
+    "limits": "Three sequential observations; maximum RSS is process memory, not system/model memory."
+  },
+  "local_model": {
+    "hardware": {
+      "cpu": "Apple M3 Pro",
+      "memory_bytes": 19327352832,
+      "logical_cpus": 11,
+      "macos": "27.0"
+    },
+    "runtime": {
+      "version": "0.35.0"
+    },
+    "results": [
+      {
+        "operation": "chat",
+        "load_state": "cold (no model resident before run)",
+        "first_text_seconds": 3.5421533749904484,
+        "elapsed_seconds": 4.4757527080364525
+      },
+      {
+        "operation": "summarize",
+        "load_state": "warm",
+        "first_text_seconds": 0.5204073339700699,
+        "elapsed_seconds": 4.896824083989486
+      },
+      {
+        "operation": "article",
+        "load_state": "warm",
+        "first_text_seconds": 0.5176314580021426,
+        "elapsed_seconds": 5.022467666072771
+      },
+      {
+        "operation": "paraphrase",
+        "load_state": "warm",
+        "first_text_seconds": 0.5431292919674888,
+        "elapsed_seconds": 4.590861999895424
+      },
+      {
+        "operation": "chat-repeat",
+        "load_state": "warm",
+        "first_text_seconds": 0.11394687497522682,
+        "elapsed_seconds": 1.132206958020106
+      }
+    ],
+    "cancellation": {
+      "elapsed_seconds": 0.013835332938469946,
+      "partial_observed": true,
+      "state": "cancelled",
+      "saved_draft_preserved": true
+    },
+    "memory": {
+      "load_state": "warm; one additional fixed chat task",
+      "elapsed_seconds": 1.0721293330425397,
+      "sample_count": 9,
+      "peak_sum_process_rss_bytes": 4655988736,
+      "peak_service_rss_bytes": 21757952,
+      "peak_worker_rss_bytes": 4634230784,
+      "conditions": "RSS of ollama service plus separate llama-server worker, sampled every 100 ms during a warm fixed chat. Provider size_vram is separate and may overlap; do not sum it with RSS."
+    }
+  },
+  "remaining_gates": [
+    "standalone packaging and fresh-machine/upgrade/soak checks",
+    "Developer ID signing/notarization and manual Dock verification",
+    "owner-triggered microphone and audible playback",
+    "explicitly budgeted real cloud compatibility",
+    "consented real-face accuracy/spoofing evaluation",
+    "EmbeddingGemma terms review; no embedding installed",
+    "branch review and authorization before public pushing"
+  ],
+  "privacy": {
+    "test_data": "Fictional temporary workspaces only",
+    "real_sensors_opened": 0,
+    "real_face_enrollments": 0,
+    "paid_cloud_calls": 0,
+    "user_workspaces_modified": false,
+    "new_credentials_created": false,
+    "models_downloaded": false
+  }
+}

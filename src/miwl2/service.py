@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import Event, RLock
+from typing import cast
 
 from miwl2.configuration import ProviderConfiguration
 from miwl2.domain import JobState, Operation, Provider, ProviderRequest, Turn
@@ -20,6 +23,7 @@ class ActiveJob:
     cancel: Event
     body: str = ""
     state: JobState = JobState.QUEUED
+    last_persisted: float = 0
 
 
 class WorkspaceService:
@@ -30,6 +34,8 @@ class WorkspaceService:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="miwl2-provider")
         self._lock = RLock()
         self._active: ActiveJob | None = None
+        self._closed = False
+        self.persistence_error = ""
         self.on_change: Callable[[], None] = lambda: None
 
     @property
@@ -69,6 +75,10 @@ class WorkspaceService:
         cloud_authorized: bool = False,
     ) -> str:
         with self._lock:
+            if self._closed:
+                raise ValueError("This workspace is closing. Reopen Miwl to send a response.")
+            if self.persistence_error:
+                raise ValueError(self.persistence_error)
             if self.provider.info.processing_location == "cloud" and not cloud_authorized:
                 raise ValueError("Confirm sending this request's text to OpenAI before continuing.")
             if self._active is not None:
@@ -107,7 +117,11 @@ class WorkspaceService:
                 history,
                 session["result"],
                 simulate_error,
+                omitted_history_turns=len(history_turns) - len(history),
             )
+            prepare = getattr(self.provider, "prepare_request", None)
+            if callable(prepare):
+                request = cast(Callable[[ProviderRequest], ProviderRequest], prepare)(request)
             job_id, message_id = self.store.create_job(session_id, request, self.provider.info)
             job = ActiveJob(job_id, session_id, message_id, request, Event())
             self._active = job
@@ -134,12 +148,18 @@ class WorkspaceService:
                 return
             job.cancel.set()
             job.state = JobState.CANCELLING
-            self.store.set_job_state(job.id, JobState.CANCELLING)
+            try:
+                self.store.set_job_state(job.id, JobState.CANCELLING)
+            except sqlite3.Error as exception:
+                self.persistence_error = (
+                    f"Stop was requested, but its status could not be saved: {exception}. "
+                    "Check storage space/permissions, then reopen the workspace."
+                )
             self.on_change()
 
     def _state(self, job: ActiveJob, state: JobState) -> None:
         with self._lock:
-            if self._active is not job or job.cancel.is_set():
+            if self._active is not job or job.cancel.is_set() or job.state == state:
                 return
             job.state = state
             self.store.set_job_state(job.id, state)
@@ -149,9 +169,14 @@ class WorkspaceService:
         with self._lock:
             if self._active is not job or job.cancel.is_set():
                 return
+            if len(job.body) + len(delta) > 64 * 1024:
+                raise ValueError("The response exceeded the text limit. Your saved draft is safe.")
             job.body += delta
-            self.store.set_message(job.message_id, job.body, "pending")
-            self.on_change()
+            now = time.monotonic()
+            if now - job.last_persisted >= 0.05:
+                self.store.set_message(job.message_id, job.body, "pending")
+                job.last_persisted = now
+                self.on_change()
 
     def _run(self, job: ActiveJob) -> None:
         error = ""
@@ -165,24 +190,32 @@ class WorkspaceService:
         finally:
             with self._lock:
                 if self._active is job:
-                    if job.cancel.is_set():
-                        self.store.set_job_state(job.id, JobState.CANCELLED)
-                        self.store.set_message(job.message_id, job.body, "cancelled")
-                    elif error:
-                        self.store.set_job_state(job.id, JobState.FAILED, error)
-                        self.store.set_message(job.message_id, job.body, "failed")
-                    elif not job.body.strip():
-                        self.store.set_job_state(
-                            job.id,
-                            JobState.FAILED,
-                            "The provider returned no text. Your source is safe; try again.",
+                    try:
+                        if job.cancel.is_set():
+                            self.store.finish_job(job.id, JobState.CANCELLED, job.body)
+                        elif error:
+                            self.store.finish_job(job.id, JobState.FAILED, job.body, error)
+                        elif not job.body.strip():
+                            self.store.finish_job(
+                                job.id,
+                                JobState.FAILED,
+                                "",
+                                "The provider returned no text. Your source is safe; try again.",
+                            )
+                        else:
+                            self.store.complete_job(job.id, job.body)
+                    except sqlite3.Error as exception:
+                        self.persistence_error = (
+                            f"The response could not be saved: {exception}. "
+                            "Your prior draft is retained. Check storage space/permissions, "
+                            "then reopen this workspace before sending again."
                         )
-                        self.store.set_message(job.message_id, "", "failed")
-                    else:
-                        self.store.complete_job(job.id, job.body)
-                    self._active = None
+                    finally:
+                        self._active = None
                     self.on_change()
 
     def shutdown(self) -> None:
-        self.cancel()
+        with self._lock:
+            self._closed = True
+            self.cancel()
         self._executor.shutdown(wait=True, cancel_futures=True)
