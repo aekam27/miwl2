@@ -1,5 +1,45 @@
 # Verification scope
 
+## October 7 native Cmd-Q coverage
+
+The existing save guard passes five native Cocoa scenarios without a production
+code change: clean Quit, pending source/draft saves, rejected source saves,
+rejected draft saves, and repeated Quit requests. Each scenario also reopens the
+same fictional workspace in a fresh app process and checks the actual editors.
+Failed saves leave the app open with the edited text, prior stored writing and a
+visible error. A further edit followed by retrying Quit saves the latest text.
+Three queued Quit requests during failure remain serialized; successful recovery
+produces one shutdown notification.
+
+The harness queues actual AppKit `NSEvent` Cmd-Q events to its own application and
+observes their delivery while the normal Cocoa event loop runs. It does not call
+the QML close handler or Qt's quit slot as the test action. The enabled native
+menu action is `terminate:`. Automatic foreground activation is disabled, and
+the foreground process stays unchanged at the checked points. Fixtures use
+temporary writing and injected SQLite errors; no devices, models or user stores
+are opened. Error-banner captures contain only the fictional fixture.
+
+The full offscreen regression baseline was refreshed: **164 passed in 19.85 s**.
+The native checks are separate from that count. A disposable negative-control
+copy with the save guard bypassed fails the four writing-protection scenarios;
+clean Quit still passes. The real application source is unchanged.
+
+This covers Cocoa delivery of the native menu shortcut. It does **not** cover a
+physical keyboard, OS-posted input, or a mouse/Accessibility click on the macOS
+menu bar. The current executor reports both Accessibility trust and event-posting
+access as false. Those input paths remain pending an authorized desktop session
+with the required permissions; no permission prompts or focus changes were used.
+
+To rerun on macOS with the prepared environment and Command Line Tools:
+
+```sh
+PYTHONPATH=src .venv/bin/python tools/verify_native_quit.py
+```
+
+The helper is compiled into a temporary directory. JSON receipts, process logs
+and fictional error previews are saved under ignored `evidence/native-quit`.
+Each child has a bounded timeout and checks its actual `cocoa` platform.
+
 ## October 6 worker-dispatch regression
 
 A failed Python worker-thread start now marks the response failed, releases the
@@ -11,10 +51,11 @@ Both new tests failed against the October 4 source and pass with this change.
 The affected storage/service tests pass **32 tests**; the aggregate run passes
 **114 non-UI tests** using fictional temporary databases and synthetic loopback
 servers. Ruff check/format (50 files), strict mypy (21 modules), and diff checks
-pass. The 50 Qt window tests were excluded because UI launch was outside this
-run's scope. The previous full-suite checkpoint was **162 tests on October 4**;
-this is not a claim that the expanded 164-test suite was run in full. Native
-macOS Quit/Cmd-Q remains untested.
+pass. The initial run excluded 50 Qt window tests. An explicitly authorized
+offscreen follow-up then passed the full **164 tests in 17.27 s**, with runtime
+checks confirming the offscreen platform. Native Quit was not tested at that
+checkpoint; the October 7 section describes the subsequent native coverage and
+its remaining input-delivery limits.
 
 ## Earlier source checkpoint
 
