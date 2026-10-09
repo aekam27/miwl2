@@ -20,11 +20,35 @@ they do not introduce or claim an asynchronous acceptance API. Fixture providers
 use no models, network, credentials or user stores. Runtime receipts confirm the
 offscreen Qt platform for all ten composer cases.
 
-Ruff check/format pass for the two changed Python files; strict mypy passes for
-the changed bridge module. Aggregate checks and the full suite remain pending
-the resource window. No native GUI or desktop-control checks were run for this
-patch, and it has not been published. The October 7 native Quit scope and its
-remaining physical/OS-input limitations are unchanged.
+The full suite at implementation commit `c580edd` passes **174 tests**, with zero
+failures, errors or skips. Runtime assertions confirm offscreen Qt whenever a
+GUI application exists during a test (92 checks). Aggregate Ruff check/format
+passes across 51 Python files, strict mypy passes across 21 source modules, and
+diff checks pass. The suite uses temporary fictional stores, synthetic loopback
+servers and mocked device/provider behavior; no models or live personal data
+were used. The recorded run took 18.77 s; it is a regression result, not a
+performance benchmark, and other project work could overlap.
+
+This is a local review change on `review/2026-10-09-composer-acceptance`. A read-only
+October 9 remote check confirmed public main at `7ef125c`, containing the merged
+daily-use foundation. The subsequent save guard, worker-dispatch recovery,
+native Quit coverage and this composer guard remain local. Nothing was pushed
+or published by this work.
+
+No native GUI or desktop-control checks were run for this patch. The October 7
+native Quit scope is unchanged: own-application queued Cocoa shortcut events
+were tested then; physical/OS-posted Cmd-Q and actual macOS menu clicks remain
+unverified. The composer still uses synchronous request acceptance; offscreen
+fixtures verify edits injected before the slot returns, not an asynchronous API
+or a human desktop session.
+
+Review story addition: A rejected Chat or Write article request used to erase
+the typed prompt even though no request had been saved or sent. Miwl now keeps
+that text for correction and retry, and a returning acceptance cannot erase
+newer edits. Repeated Send attempts and worker-failure retry are covered for
+both writing modes. The full 174-test fixture suite passes locally; the change
+is ready for review and has not been published. Native human-input checks remain
+outside this verification.
 
 ## October 7 native Cmd-Q coverage
 
