@@ -1,6 +1,6 @@
 # Verification scope
 
-## October 9 composer acceptance guard — local review
+## October 9 writing reliability verification
 
 Chat and article requests now clear the composer only after the backend accepts
 the request. Text-budget rejection or failure to save the initial request leaves
@@ -29,11 +29,12 @@ servers and mocked device/provider behavior; no models or live personal data
 were used. The recorded run took 18.77 s; it is a regression result, not a
 performance benchmark, and other project work could overlap.
 
-This is a local review change on `review/2026-10-09-composer-acceptance`. A read-only
-October 9 remote check confirmed public main at `7ef125c`, containing the merged
-daily-use foundation. The subsequent save guard, worker-dispatch recovery,
-native Quit coverage and this composer guard remain local. Nothing was pushed
-or published by this work.
+At the October 9 verification checkpoint, the changes were held on local branch
+`review/2026-10-09-composer-acceptance`. A read-only remote check found public main
+at `7ef125c`, containing the merged daily-use foundation. The subsequent save
+guard, worker-dispatch recovery, native Quit coverage and composer guard were
+reviewed together for publication. The integration preserves that main history
+and the application code, tests and tools from the 174-test checkpoint.
 
 No native GUI or desktop-control checks were run for this patch. The October 7
 native Quit scope is unchanged: own-application queued Cocoa shortcut events
@@ -42,13 +43,15 @@ unverified. The composer still uses synchronous request acceptance; offscreen
 fixtures verify edits injected before the slot returns, not an asynchronous API
 or a human desktop session.
 
-Review story addition: A rejected Chat or Write article request used to erase
+Story addition: A rejected Chat or Write article request used to erase
 the typed prompt even though no request had been saved or sent. Miwl now keeps
 that text for correction and retry, and a returning acceptance cannot erase
 newer edits. Repeated Send attempts and worker-failure retry are covered for
-both writing modes. The full 174-test fixture suite passes locally; the change
-is ready for review and has not been published. Native human-input checks remain
-outside this verification.
+both writing modes. The full 174-test fixture suite passes locally. Earlier
+safeguards retain unsaved source/draft edits after storage failures and recover
+when a response worker cannot start. These are source-code improvements;
+publishing them does not update an existing desktop installation. Native
+human-input checks remain outside this verification.
 
 ## October 7 native Cmd-Q coverage
 
