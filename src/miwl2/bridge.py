@@ -44,6 +44,8 @@ class WorkspaceBridge(QObject):
         self._sessions: list[dict[str, Any]] = []
         self._last_job: dict[str, Any] | None = None
         self._validation_error = ""
+        self._source_save_error = ""
+        self._draft_save_error = ""
         self._dismissed_job = ""
         self._notice = service.store.configuration_warning
         self._simulate_failure = False
@@ -152,6 +154,9 @@ class WorkspaceBridge(QObject):
 
     @Property(str, notify=contextChanged)
     def errorMessage(self) -> str:
+        editor_errors = [self._source_save_error, self._draft_save_error]
+        if any(editor_errors):
+            return "\n".join(error for error in editor_errors if error)
         if self.service.persistence_error:
             return self.service.persistence_error
         if self._validation_error:
@@ -163,6 +168,10 @@ class WorkspaceBridge(QObject):
         ):
             return str(self._last_job["error"])
         return ""
+
+    @Property(bool, notify=contextChanged)
+    def editorSaveFailed(self) -> bool:
+        return bool(self._source_save_error or self._draft_save_error)
 
     @Property(bool, notify=contextChanged)
     def retryAvailable(self) -> bool:
@@ -264,31 +273,41 @@ class WorkspaceBridge(QObject):
         self._simulate_failure = enabled
         self.contextChanged.emit()
 
-    @Slot(str)
-    def updateSource(self, source: str) -> None:
+    @Slot(str, result=bool)
+    def updateSource(self, source: str) -> bool:
         try:
             self.service.update_source(self._current_id, source)
         except sqlite3.Error as exception:
-            self._validation_error = (
-                f"Source could not be saved: {exception}. Copy your edits before closing."
+            self._source_save_error = (
+                f"Source could not be saved: {exception}. "
+                "Your edits remain in the editor. Retry when storage is writable, "
+                "or select and copy the text before closing."
             )
             self.contextChanged.emit()
+            return False
         else:
+            self._source_save_error = ""
             self._validation_error = ""
             self.refresh()
+            return True
 
-    @Slot(str)
-    def updateResult(self, result: str) -> None:
+    @Slot(str, result=bool)
+    def updateResult(self, result: str) -> bool:
         try:
             self.service.update_result(self._current_id, result)
         except sqlite3.Error as exception:
-            self._validation_error = (
-                f"Draft could not be saved: {exception}. Copy your edits before closing."
+            self._draft_save_error = (
+                f"Draft could not be saved: {exception}. "
+                "Your edits remain in the editor. Retry when storage is writable, "
+                "or select and copy the text before closing."
             )
             self.contextChanged.emit()
+            return False
         else:
+            self._draft_save_error = ""
             self._validation_error = ""
             self.refresh()
+            return True
 
     @Slot()
     def loadSample(self) -> None:
@@ -331,8 +350,9 @@ class WorkspaceBridge(QObject):
     def documentsBusy(self) -> bool:
         return self.documents_busy()
 
-    def _start(self, operation: Operation, prompt: str = "") -> None:
+    def _start(self, operation: Operation, prompt: str = "") -> bool:
         self._validation_error = ""
+        accepted = False
         consent, self._cloud_authorized = self._cloud_authorized, False
         try:
             if self.documents_busy():
@@ -346,10 +366,18 @@ class WorkspaceBridge(QObject):
                 self._simulate_failure,
                 cloud_authorized=consent,
             )
+            # A persisted request remains accepted even if worker startup failed;
+            # its text is in history and the existing Retry action owns recovery.
+            accepted = True
             self._simulate_failure = False
         except ValueError as exception:
             self._validation_error = str(exception)
+        except sqlite3.Error as exception:
+            self._validation_error = (
+                f"Request could not be saved: {exception}. Check storage and try again."
+            )
         self.refresh()
+        return accepted
 
     @Slot()
     def summarize(self) -> None:
@@ -359,13 +387,13 @@ class WorkspaceBridge(QObject):
     def paraphrase(self) -> None:
         self._start(Operation.PARAPHRASE)
 
-    @Slot(str)
-    def writeArticle(self, topic: str) -> None:
-        self._start(Operation.ARTICLE, topic)
+    @Slot(str, result=bool)
+    def writeArticle(self, topic: str) -> bool:
+        return self._start(Operation.ARTICLE, topic)
 
-    @Slot(str)
-    def sendMessage(self, prompt: str) -> None:
-        self._start(Operation.CHAT, prompt)
+    @Slot(str, result=bool)
+    def sendMessage(self, prompt: str) -> bool:
+        return self._start(Operation.CHAT, prompt)
 
     @Slot()
     def stop(self) -> None:

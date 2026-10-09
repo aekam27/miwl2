@@ -1,6 +1,118 @@
 # Verification scope
 
-Source checkpoint: **136 regression tests passed** on Apple Silicon macOS with
+## October 9 writing reliability verification
+
+Chat and article requests now clear the composer only after the backend accepts
+the request. Text-budget rejection or failure to save the initial request leaves
+the text available for correction and resubmission, with a visible error. A
+submission guard blocks reentrant Send calls, and a composer revision check keeps
+edits made before acceptance returns, including changes back to the same text.
+Accepted requests whose worker cannot start remain in history and use the
+existing Retry action; retrying does not clear the next composer draft.
+
+Ten new offscreen regressions cover these cases for both Chat and Write article.
+Against the previous source, eight failed and two existing-behavior checks passed;
+all ten pass with the patch. The affected editor-save and worker-dispatch checks
+pass **22 tests in 2.90 s**. Fictional SQLite triggers reject job creation after
+message insertion to verify transaction rollback. The pending-acceptance cases
+inject edits and repeated Send calls during synchronous request preparation;
+they do not introduce or claim an asynchronous acceptance API. Fixture providers
+use no models, network, credentials or user stores. Runtime receipts confirm the
+offscreen Qt platform for all ten composer cases.
+
+The full suite at implementation commit `c580edd` passes **174 tests**, with zero
+failures, errors or skips. Runtime assertions confirm offscreen Qt whenever a
+GUI application exists during a test (92 checks). Aggregate Ruff check/format
+passes across 51 Python files, strict mypy passes across 21 source modules, and
+diff checks pass. The suite uses temporary fictional stores, synthetic loopback
+servers and mocked device/provider behavior; no models or live personal data
+were used. The recorded run took 18.77 s; it is a regression result, not a
+performance benchmark, and other project work could overlap.
+
+At the October 9 verification checkpoint, the changes were held on local branch
+`review/2026-10-09-composer-acceptance`. A read-only remote check found public main
+at `7ef125c`, containing the merged daily-use foundation. The subsequent save
+guard, worker-dispatch recovery, native Quit coverage and composer guard were
+reviewed together for publication. The integration preserves that main history
+and the application code, tests and tools from the 174-test checkpoint.
+
+No native GUI or desktop-control checks were run for this patch. The October 7
+native Quit scope is unchanged: own-application queued Cocoa shortcut events
+were tested then; physical/OS-posted Cmd-Q and actual macOS menu clicks remain
+unverified. The composer still uses synchronous request acceptance; offscreen
+fixtures verify edits injected before the slot returns, not an asynchronous API
+or a human desktop session.
+
+Story addition: A rejected Chat or Write article request used to erase
+the typed prompt even though no request had been saved or sent. Miwl now keeps
+that text for correction and retry, and a returning acceptance cannot erase
+newer edits. Repeated Send attempts and worker-failure retry are covered for
+both writing modes. The full 174-test fixture suite passes locally. Earlier
+safeguards retain unsaved source/draft edits after storage failures and recover
+when a response worker cannot start. These are source-code improvements;
+publishing them does not update an existing desktop installation. Native
+human-input checks remain outside this verification.
+
+## October 7 native Cmd-Q coverage
+
+The existing save guard passes five native Cocoa scenarios without a production
+code change: clean Quit, pending source/draft saves, rejected source saves,
+rejected draft saves, and repeated Quit requests. Each scenario also reopens the
+same fictional workspace in a fresh app process and checks the actual editors.
+Failed saves leave the app open with the edited text, prior stored writing and a
+visible error. A further edit followed by retrying Quit saves the latest text.
+Three queued Quit requests during failure remain serialized; successful recovery
+produces one shutdown notification.
+
+The harness queues actual AppKit `NSEvent` Cmd-Q events to its own application and
+observes their delivery while the normal Cocoa event loop runs. It does not call
+the QML close handler or Qt's quit slot as the test action. The enabled native
+menu action is `terminate:`. Automatic foreground activation is disabled, and
+the foreground process stays unchanged at the checked points. Fixtures use
+temporary writing and injected SQLite errors; no devices, models or user stores
+are opened. Error-banner captures contain only the fictional fixture.
+
+The full offscreen regression baseline was refreshed: **164 passed in 19.85 s**.
+The native checks are separate from that count. A disposable negative-control
+copy with the save guard bypassed fails the four writing-protection scenarios;
+clean Quit still passes. The real application source is unchanged.
+
+This covers Cocoa delivery of the native menu shortcut. It does **not** cover a
+physical keyboard, OS-posted input, or a mouse/Accessibility click on the macOS
+menu bar. The current executor reports both Accessibility trust and event-posting
+access as false. Those input paths remain pending an authorized desktop session
+with the required permissions; no permission prompts or focus changes were used.
+
+To rerun on macOS with the prepared environment and Command Line Tools:
+
+```sh
+PYTHONPATH=src .venv/bin/python tools/verify_native_quit.py
+```
+
+The helper is compiled into a temporary directory. JSON receipts, process logs
+and fictional error previews are saved under ignored `evidence/native-quit`.
+Each child has a bounded timeout and checks its actual `cocoa` platform.
+
+## October 6 worker-dispatch regression
+
+A failed Python worker-thread start now marks the response failed, releases the
+active job and preserves saved writing. Retrying does not run the abandoned
+queue item. If saving the failure also fails, further requests remain blocked
+until reopening the workspace.
+
+Both new tests failed against the October 4 source and pass with this change.
+The affected storage/service tests pass **32 tests**; the aggregate run passes
+**114 non-UI tests** using fictional temporary databases and synthetic loopback
+servers. Ruff check/format (50 files), strict mypy (21 modules), and diff checks
+pass. The initial run excluded 50 Qt window tests. An explicitly authorized
+offscreen follow-up then passed the full **164 tests in 17.27 s**, with runtime
+checks confirming the offscreen platform. Native Quit was not tested at that
+checkpoint; the October 7 section describes the subsequent native coverage and
+its remaining input-delivery limits.
+
+## Earlier source checkpoint
+
+The initial source checkpoint passed **136 regression tests** on Apple Silicon macOS with
 Python 3.13, Qt 6.11 and the locked dependency set. Ruff check/format and strict
 mypy pass across 20 source modules. This is a development checkpoint, not a
 production certification or accuracy benchmark.

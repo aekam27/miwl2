@@ -20,6 +20,8 @@ ApplicationWindow {
     property color accent: "#245dc9"
     property color line: "#dedfd8"
     property bool syncingEditors: false
+    property bool submittingPrompt: false
+    property int promptRevision: 0
     property bool sidebarVisible: width >= 1100
     property bool inspectorVisible: width >= 1200
     property bool reduceMotion: false
@@ -40,39 +42,51 @@ ApplicationWindow {
     function flushEditors() {
         sourceSave.stop();
         resultSave.stop();
-        bridge.updateSource(sourceEditor.text);
-        bridge.updateResult(resultEditor.text);
+        var sourceSaved = bridge.updateSource(sourceEditor.text);
+        var draftSaved = bridge.updateResult(resultEditor.text);
+        return sourceSaved && draftSaved;
     }
     function chooseSession(id) {
-        flushEditors();
+        if (!flushEditors()) return;
         bridge.selectSession(id);
         activeView = 0;
     }
     function newSession() {
-        flushEditors();
+        if (!flushEditors()) return;
         bridge.newSession();
         activeView = 0;
     }
     function sendPrompt() {
-        if (bridge.busy || voiceBusy || !promptEditor.text.trim())
+        if (submittingPrompt || bridge.busy || voiceBusy || !promptEditor.text.trim())
             return;
-        flushEditors();
-        if (!prepareCloudRequest()) return;
-        activeView = 0;
-        if (operationPicker.currentIndex === 1)
-            bridge.writeArticle(promptEditor.text);
-        else
-            bridge.sendMessage(promptEditor.text);
-        promptEditor.text = "";
+        var submittedText = promptEditor.text;
+        var submittedRevision = promptRevision;
+        var submittedSession = bridge.currentSessionId;
+        var article = operationPicker.currentIndex === 1;
+        submittingPrompt = true;
+        try {
+            if (!flushEditors()) return;
+            if (!prepareCloudRequest()) return;
+            activeView = 0;
+            var accepted = article
+                ? bridge.writeArticle(submittedText)
+                : bridge.sendMessage(submittedText);
+            // Preserve any edits made before acceptance, even an edit back to the same text.
+            if (accepted && promptRevision === submittedRevision
+                    && bridge.currentSessionId === submittedSession)
+                promptEditor.text = "";
+        } finally {
+            submittingPrompt = false;
+        }
     }
     function summarizeSource() {
-        flushEditors();
+        if (!flushEditors()) return;
         if (!prepareCloudRequest()) return;
         activeView = 0;
         bridge.summarize();
     }
     function paraphraseSource() {
-        flushEditors();
+        if (!flushEditors()) return;
         if (!prepareCloudRequest()) return;
         activeView = 0;
         bridge.paraphrase();
@@ -104,7 +118,9 @@ ApplicationWindow {
         renameField.text = bridge.sessionTitle;
         renameDialog.open();
     }
-    onClosing: flushEditors()
+    onClosing: function(close) {
+        close.accepted = flushEditors();
+    }
     Shortcut {
         sequences: ["Ctrl+N", "Meta+N"]
         onActivated: window.newSession()
@@ -690,7 +706,7 @@ ApplicationWindow {
             }
             Rectangle {
                 objectName: "errorBanner"
-                visible: (window.activeView < 2 || window.activeView === 3) && bridge.errorMessage.length > 0
+                visible: (window.activeView < 2 || window.activeView === 3 || bridge.editorSaveFailed) && bridge.errorMessage.length > 0
                 Layout.fillWidth: true
                 implicitHeight: errorRow.implicitHeight + 20
                 radius: 10
@@ -713,7 +729,7 @@ ApplicationWindow {
                         text: "Retry"
                         enabled: bridge.retryAvailable && !window.voiceBusy && !window.documentsBusy && window.cloudReady
                         onClicked: {
-                            window.flushEditors();
+                            if (!window.flushEditors()) return;
                             if (!window.prepareCloudRequest()) return;
                             bridge.retry();
                         }
@@ -814,7 +830,7 @@ ApplicationWindow {
                                         text: "Use sample notes"
                                         glyph: "document"
                                         onClicked: {
-                                            window.flushEditors();
+                                            if (!window.flushEditors()) return;
                                             bridge.loadSample();
                                             window.focusSource();
                                         }
@@ -943,7 +959,7 @@ ApplicationWindow {
                                     glyph: "copy"
                                     enabled: resultEditor.text.trim().length > 0
                                     onClicked: {
-                                        window.flushEditors();
+                                        if (!window.flushEditors()) return;
                                         bridge.copyResult();
                                     }
                                 }
@@ -1023,6 +1039,7 @@ ApplicationWindow {
                                     Editor {
                                         id: promptEditor
                                         objectName: "promptEditor"
+                                        onTextChanged: window.promptRevision++
                                         Accessible.name: "Message Miwl"
                                         placeholderText: operationPicker.currentIndex === 1 ? "Article topic, audience and any requirements" : "For example: make it shorter"
                                         font.pixelSize: 15
@@ -1051,7 +1068,7 @@ ApplicationWindow {
                                     hoverEnabled: true
                                     Accessible.name: text
                                     Accessible.description: hint
-                                    enabled: bridge.busy || (!window.voiceBusy && !window.documentsBusy && window.cloudReady && promptEditor.text.trim().length > 0)
+                                    enabled: !window.submittingPrompt && (bridge.busy || (!window.voiceBusy && !window.documentsBusy && window.cloudReady && promptEditor.text.trim().length > 0))
                                     onClicked: bridge.busy ? bridge.stop() : window.sendPrompt()
                                     background: Item {
                                         Rectangle {
@@ -1219,7 +1236,7 @@ ApplicationWindow {
                             glyph: "document"
                             enabled: !bridge.busy
                             onClicked: {
-                                window.flushEditors();
+                                if (!window.flushEditors()) return;
                                 bridge.loadSample();
                             }
                         }
@@ -1368,7 +1385,7 @@ ApplicationWindow {
                 text: "Back up writing"
                 Layout.fillWidth: true
                 onClicked: {
-                    window.flushEditors();
+                    if (!window.flushEditors()) return;
                     bridge.backupWorkspace();
                 }
             }
