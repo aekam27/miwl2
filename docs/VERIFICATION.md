@@ -1,5 +1,31 @@
 # Verification scope
 
+## October 9 composer acceptance guard — local review
+
+Chat and article requests now clear the composer only after the backend accepts
+the request. Text-budget rejection or failure to save the initial request leaves
+the text available for correction and resubmission, with a visible error. A
+submission guard blocks reentrant Send calls, and a composer revision check keeps
+edits made before acceptance returns, including changes back to the same text.
+Accepted requests whose worker cannot start remain in history and use the
+existing Retry action; retrying does not clear the next composer draft.
+
+Ten new offscreen regressions cover these cases for both Chat and Write article.
+Against the previous source, eight failed and two existing-behavior checks passed;
+all ten pass with the patch. The affected editor-save and worker-dispatch checks
+pass **22 tests in 2.90 s**. Fictional SQLite triggers reject job creation after
+message insertion to verify transaction rollback. The pending-acceptance cases
+inject edits and repeated Send calls during synchronous request preparation;
+they do not introduce or claim an asynchronous acceptance API. Fixture providers
+use no models, network, credentials or user stores. Runtime receipts confirm the
+offscreen Qt platform for all ten composer cases.
+
+Ruff check/format pass for the two changed Python files; strict mypy passes for
+the changed bridge module. Aggregate checks and the full suite remain pending
+the resource window. No native GUI or desktop-control checks were run for this
+patch, and it has not been published. The October 7 native Quit scope and its
+remaining physical/OS-input limitations are unchanged.
+
 ## October 7 native Cmd-Q coverage
 
 The existing save guard passes five native Cocoa scenarios without a production

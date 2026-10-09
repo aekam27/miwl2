@@ -5,6 +5,7 @@ import sqlite3
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from threading import Thread
 from typing import cast
 from unittest.mock import Mock
 
@@ -16,8 +17,11 @@ from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtTest import QTest
 from shiboken6 import delete
+from test_core import ControlledProvider
 
 from miwl2.bridge import WorkspaceBridge
+from miwl2.domain import JobState, ProviderRequest
+from miwl2.prompts import prepare_request
 from miwl2.providers import DeterministicProvider
 from miwl2.service import WorkspaceService
 from miwl2.storage import Store
@@ -72,6 +76,136 @@ def evaluate(window: QQuickWindow, expression: str) -> None:
     script = QQmlExpression(QQmlEngine.contextForObject(window), window, expression)
     script.evaluate()
     assert not script.hasError(), script.error().toString()
+
+
+class ComposerProvider(ControlledProvider):
+    def prepare_request(self, request: ProviderRequest) -> ProviderRequest:
+        return prepare_request(request, "Fictional fixture. ", 1024)
+
+
+@pytest.fixture
+def composer(
+    writing_ui: tuple[WorkspaceBridge, QQuickWindow], request: pytest.FixtureRequest
+) -> Iterator[tuple[WorkspaceBridge, QQuickWindow, QQuickItem, ComposerProvider]]:
+    bridge, window = writing_ui
+    request.node.user_properties.append(("qt_platform", QGuiApplication.platformName()))
+    provider = ComposerProvider()
+    bridge.service.provider = provider
+    picker = window.findChild(QQuickItem, "operationPicker")
+    prompt = window.findChild(QQuickItem, "promptEditor")
+    assert picker is not None and prompt is not None
+    picker.setProperty("currentIndex", request.param)
+    try:
+        yield bridge, window, prompt, provider
+    finally:
+        provider.release.set()
+
+
+@pytest.mark.parametrize("composer", [0, 1], indirect=True, ids=["chat", "article"])
+@pytest.mark.parametrize("rejection", ["budget", "storage"])
+def test_composer_rejection_preserves_text_and_retry_submits_once(
+    composer: tuple[WorkspaceBridge, QQuickWindow, QQuickItem, ComposerProvider],
+    rejection: str,
+) -> None:
+    bridge, window, prompt, provider = composer
+    store, session = bridge.service.store, bridge.currentSessionId
+    pending = "Fictional request" * (100 if rejection == "budget" else 1)
+    prompt.setProperty("text", pending)
+    if rejection == "storage":
+        # Reject after both message inserts to check transaction rollback, too.
+        with store.connection() as connection:
+            connection.execute(
+                "CREATE TRIGGER reject_fixture_job BEFORE INSERT ON jobs "
+                "BEGIN SELECT RAISE(ABORT, 'fictional storage rejection'); END"
+            )
+    for _ in range(2):
+        evaluate(window, "sendPrompt()")
+        assert prompt.property("text") == pending
+        assert (
+            "exceed the text limit" if rejection == "budget" else "Request could not be saved"
+        ) in bridge.errorMessage
+        assert not bridge.busy
+        assert store.messages(session) == [] and store.last_job(session) is None
+        assert provider.requests == []
+        assert store.session(session)["source"] == "Fictional saved source"
+        assert store.session(session)["result"] == "Fictional saved draft"
+
+    if rejection == "storage":
+        with store.connection() as connection:
+            connection.execute("DROP TRIGGER reject_fixture_job")
+    else:
+        pending = "Fictional corrected request"
+        prompt.setProperty("text", pending)
+    evaluate(window, "sendPrompt()")
+    assert prompt.property("text") == ""
+    assert not bridge.errorMessage
+    assert provider.started.wait(1)
+    assert bridge.busy
+    prompt.setProperty("text", "Fictional next request")
+    evaluate(window, "sendPrompt(); sendPrompt()")
+    assert prompt.property("text") == "Fictional next request"
+    assert [row["body"] for row in store.messages(session) if row["role"] == "user"] == [pending]
+    assert len(provider.requests) == 1
+
+
+@pytest.mark.parametrize("composer", [0, 1], indirect=True, ids=["chat", "article"])
+@pytest.mark.parametrize("edit", ["different", "same-again"])
+def test_composer_acceptance_preserves_newer_edits_and_blocks_reentrant_send(
+    composer: tuple[WorkspaceBridge, QQuickWindow, QQuickItem, ComposerProvider],
+    monkeypatch: pytest.MonkeyPatch,
+    edit: str,
+) -> None:
+    bridge, window, prompt, provider = composer
+    pending = "Fictional submitted request"
+    prompt.setProperty("text", pending)
+    prepare = provider.prepare_request
+    calls = 0
+
+    def edit_before_acceptance(request: ProviderRequest) -> ProviderRequest:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            # Emulate editing/repeated Send before the synchronous slot returns.
+            prompt.setProperty("text", "Fictional newer request")
+            if edit == "same-again":
+                prompt.setProperty("text", pending)
+            evaluate(window, "sendPrompt(); sendPrompt()")
+        return prepare(request)
+
+    monkeypatch.setattr(provider, "prepare_request", edit_before_acceptance)
+    evaluate(window, "sendPrompt()")
+    expected = pending if edit == "same-again" else "Fictional newer request"
+    assert prompt.property("text") == expected
+    assert calls == 1
+    assert provider.started.wait(1)
+    assert [item.prompt for item in provider.requests] == [pending]
+    assert len(bridge.service.store.messages(bridge.currentSessionId)) == 2
+
+
+@pytest.mark.parametrize("composer", [0, 1], indirect=True, ids=["chat", "article"])
+def test_composer_accepted_dispatch_failure_clears_once_and_retry_leaves_new_text(
+    composer: tuple[WorkspaceBridge, QQuickWindow, QQuickItem, ComposerProvider],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, window, prompt, provider = composer
+    pending = "Fictional accepted request"
+    prompt.setProperty("text", pending)
+    with monkeypatch.context() as failure:
+        failure.setattr(Thread, "start", Mock(side_effect=RuntimeError("fictional capacity")))
+        evaluate(window, "sendPrompt()")
+    assert prompt.property("text") == ""
+    assert provider.requests == []
+    assert bridge.retryAvailable
+    job = bridge.service.store.last_job(bridge.currentSessionId)
+    assert job is not None and job["state"] == JobState.FAILED
+    assert json.loads(job["request"])["prompt"] == pending
+    prompt.setProperty("text", "Fictional next request")
+    retry = window.findChild(QQuickItem, "retryButton")
+    assert retry is not None
+    assert QMetaObject.invokeMethod(retry, "clicked")
+    assert provider.started.wait(1)
+    assert prompt.property("text") == "Fictional next request"
+    assert [item.prompt for item in provider.requests] == [pending]
 
 
 @pytest.mark.parametrize("field", ["source", "draft"])

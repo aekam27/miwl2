@@ -350,8 +350,9 @@ class WorkspaceBridge(QObject):
     def documentsBusy(self) -> bool:
         return self.documents_busy()
 
-    def _start(self, operation: Operation, prompt: str = "") -> None:
+    def _start(self, operation: Operation, prompt: str = "") -> bool:
         self._validation_error = ""
+        accepted = False
         consent, self._cloud_authorized = self._cloud_authorized, False
         try:
             if self.documents_busy():
@@ -365,10 +366,18 @@ class WorkspaceBridge(QObject):
                 self._simulate_failure,
                 cloud_authorized=consent,
             )
+            # A persisted request remains accepted even if worker startup failed;
+            # its text is in history and the existing Retry action owns recovery.
+            accepted = True
             self._simulate_failure = False
         except ValueError as exception:
             self._validation_error = str(exception)
+        except sqlite3.Error as exception:
+            self._validation_error = (
+                f"Request could not be saved: {exception}. Check storage and try again."
+            )
         self.refresh()
+        return accepted
 
     @Slot()
     def summarize(self) -> None:
@@ -378,13 +387,13 @@ class WorkspaceBridge(QObject):
     def paraphrase(self) -> None:
         self._start(Operation.PARAPHRASE)
 
-    @Slot(str)
-    def writeArticle(self, topic: str) -> None:
-        self._start(Operation.ARTICLE, topic)
+    @Slot(str, result=bool)
+    def writeArticle(self, topic: str) -> bool:
+        return self._start(Operation.ARTICLE, topic)
 
-    @Slot(str)
-    def sendMessage(self, prompt: str) -> None:
-        self._start(Operation.CHAT, prompt)
+    @Slot(str, result=bool)
+    def sendMessage(self, prompt: str) -> bool:
+        return self._start(Operation.CHAT, prompt)
 
     @Slot()
     def stop(self) -> None:

@@ -20,6 +20,8 @@ ApplicationWindow {
     property color accent: "#245dc9"
     property color line: "#dedfd8"
     property bool syncingEditors: false
+    property bool submittingPrompt: false
+    property int promptRevision: 0
     property bool sidebarVisible: width >= 1100
     property bool inspectorVisible: width >= 1200
     property bool reduceMotion: false
@@ -55,16 +57,27 @@ ApplicationWindow {
         activeView = 0;
     }
     function sendPrompt() {
-        if (bridge.busy || voiceBusy || !promptEditor.text.trim())
+        if (submittingPrompt || bridge.busy || voiceBusy || !promptEditor.text.trim())
             return;
-        if (!flushEditors()) return;
-        if (!prepareCloudRequest()) return;
-        activeView = 0;
-        if (operationPicker.currentIndex === 1)
-            bridge.writeArticle(promptEditor.text);
-        else
-            bridge.sendMessage(promptEditor.text);
-        promptEditor.text = "";
+        var submittedText = promptEditor.text;
+        var submittedRevision = promptRevision;
+        var submittedSession = bridge.currentSessionId;
+        var article = operationPicker.currentIndex === 1;
+        submittingPrompt = true;
+        try {
+            if (!flushEditors()) return;
+            if (!prepareCloudRequest()) return;
+            activeView = 0;
+            var accepted = article
+                ? bridge.writeArticle(submittedText)
+                : bridge.sendMessage(submittedText);
+            // Preserve any edits made before acceptance, even an edit back to the same text.
+            if (accepted && promptRevision === submittedRevision
+                    && bridge.currentSessionId === submittedSession)
+                promptEditor.text = "";
+        } finally {
+            submittingPrompt = false;
+        }
     }
     function summarizeSource() {
         if (!flushEditors()) return;
@@ -1026,6 +1039,7 @@ ApplicationWindow {
                                     Editor {
                                         id: promptEditor
                                         objectName: "promptEditor"
+                                        onTextChanged: window.promptRevision++
                                         Accessible.name: "Message Miwl"
                                         placeholderText: operationPicker.currentIndex === 1 ? "Article topic, audience and any requirements" : "For example: make it shorter"
                                         font.pixelSize: 15
@@ -1054,7 +1068,7 @@ ApplicationWindow {
                                     hoverEnabled: true
                                     Accessible.name: text
                                     Accessible.description: hint
-                                    enabled: bridge.busy || (!window.voiceBusy && !window.documentsBusy && window.cloudReady && promptEditor.text.trim().length > 0)
+                                    enabled: !window.submittingPrompt && (bridge.busy || (!window.voiceBusy && !window.documentsBusy && window.cloudReady && promptEditor.text.trim().length > 0))
                                     onClicked: bridge.busy ? bridge.stop() : window.sendPrompt()
                                     background: Item {
                                         Rectangle {
