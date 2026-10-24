@@ -202,15 +202,17 @@ class DocumentsBridge(QObject):
     def search(self, question: str) -> None:
         if not self._ready():
             return
-        self._clear_evidence()
         try:
             question = check_query(question)
             if not self._selected:
                 raise DocumentError("Select at least one imported document for this search.")
         except DocumentError as error:
             self._error = str(error)
+            if self._results:
+                self._status = f"Search not run. Keeping results for: {self._question}"
             self.changed.emit()
             return
+        self._clear_evidence()
         self._question = question
         selected = tuple(sorted(self._selected))
         self._status = "Searching the selected imported copies with local FTS5…"

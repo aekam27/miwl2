@@ -888,6 +888,43 @@ def test_documents_screen_search_citation_compact_and_confirmed_removal(
     assert source.read_bytes() == original
 
 
+@pytest.mark.parametrize("invalid_query", ["", "   ", "x" * 501])
+def test_rejected_document_search_keeps_evidence_and_original_question(
+    app: QGuiApplication,
+    bridge: WorkspaceBridge,
+    ui: QQuickWindow,
+    tmp_path: Path,
+    invalid_query: str,
+) -> None:
+    context = import_synthetic_document(app, bridge, tmp_path)
+    provider = DocumentProviderFixture()
+    bridge.service.provider = provider
+    bridge.contextChanged.emit()
+    context.search("respondents")
+    settle_documents(app, context)
+    original = context.results.copy()
+    context.openCitation(original[0]["citation"])
+    citation = context.citation.copy()
+
+    context.search(invalid_query)
+
+    assert context.error and not context.busy
+    assert context.results == original
+    assert context.citation == citation
+    assert context.question == "respondents"
+    assert "Keeping results for: respondents" in context.statusText
+    context.openCitation(original[0]["citation"])
+    assert context.citation == citation
+    context.chooseQuotations()
+    settle_documents(app, context)
+    assert provider.requests[0].prompt.endswith("Question: respondents")
+
+    context.search("no_matching_cedar_evidence")
+    settle_documents(app, context)
+    assert context.results == [] and context.citation == {}
+    assert "couldn't find" in context.statusText
+
+
 def test_document_model_context_excludes_writing_and_cloud_calls(
     app: QGuiApplication, bridge: WorkspaceBridge, ui: QQuickWindow, tmp_path: Path
 ) -> None:
