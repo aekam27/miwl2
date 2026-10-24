@@ -301,6 +301,42 @@ class DocumentsBridge(QObject):
             self._error = str(error)
             self.changed.emit()
 
+    @Slot(str, result=str)
+    def quotationForDraft(self, url: str) -> str:
+        """Return a verified plain-text quotation; never read or replace the draft."""
+        if not self._ready():
+            return ""
+        row = next(
+            (
+                result
+                for result in self._results
+                if result["citation"] == url and result["documentId"] in self._selected
+            ),
+            None,
+        )
+        try:
+            if row is None:
+                raise DocumentError(
+                    "Search selected sources again before inserting this quotation."
+                )
+            current = self.index.chunk(row["id"])
+            if current.source_sha256 != row["sha256"] or row["text"] not in current.text:
+                raise DocumentError("This source snapshot changed. Search again before inserting.")
+            verified = current.display(row["text"])
+            name = current.name.replace("\n", " ").replace("\r", " ")
+            quotation = "\n".join("> " + line for line in row["text"].strip().splitlines())
+            attribution = (
+                f"Source: {name} · lines {verified['lineStart']}–{verified['lineEnd']}\n"
+                f"Imported snapshot SHA-256: {current.source_sha256}"
+            )
+            self._status = f"Quotation inserted with source provenance from {name}."
+            self.changed.emit()
+            return f"\n\n{quotation}\n\n{attribution}\n\n"
+        except DocumentError as error:
+            self._error = str(error)
+            self.changed.emit()
+            return ""
+
     @Slot()
     def stop(self) -> None:
         self._token += 1

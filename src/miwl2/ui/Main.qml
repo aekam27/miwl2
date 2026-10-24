@@ -46,6 +46,13 @@ ApplicationWindow {
         var draftSaved = bridge.updateResult(resultEditor.text);
         return sourceSaved && draftSaved;
     }
+    function insertResearchQuotation(citation) {
+        if (typeof documentsContext === "undefined" || !flushEditors()) return;
+        var quotation = documentsContext.quotationForDraft(citation);
+        if (!quotation) return;
+        researchPanel.insertQuotationText(quotation);
+        flushEditors();
+    }
     function chooseSession(id) {
         if (!flushEditors()) return;
         bridge.selectSession(id);
@@ -750,12 +757,18 @@ ApplicationWindow {
                 visionBridge: typeof visionContext !== "undefined" ? visionContext : null
             }
             DocumentsPanel {
+                id: researchPanel
+                compact: window.compact
                 objectName: "documentsPanel"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: window.activeView === 5
                 documentsBridge: typeof documentsContext !== "undefined" ? documentsContext : null
                 workspaceBridge: bridge
+                draftText: resultEditor.text
+                onDraftEdited: function(text) { resultEditor.text = text; }
+                onQuoteRequested: function(citation) { window.insertResearchQuotation(citation); }
+                onCopyDraftRequested: { if (window.flushEditors()) bridge.copyResult(); }
                 externalBusy: bridge.busy || window.voiceBusy
             }
             GalleryPanel {

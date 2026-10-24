@@ -17,7 +17,7 @@ optional models retain their own licenses and terms.
 | --- | --- | --- |
 | Writing | Saved sessions, source notes, streaming chat/refinement, summaries, paraphrases, article tasks and editable drafts | Local Ollama/Gemma exercised with fictional notes; outputs need review |
 | Composer | One input surface, multiline growth, bounded scrolling, raised Send/Write, focus/disabled states and cancellable Stop | Native Cocoa Qt synthetic fixtures at normal and compact sizes |
-| Documents | Explicit UTF-8 text/Markdown import; selected-source FTS5/BM25 search; optional local selection of exact quotations; snapshot citations with lines and hash | Exact quote checks do not establish relevance, recall, completeness or semantic search quality |
+| Documents | Explicit UTF-8 text/Markdown import; selected-source FTS5/BM25 search; optional local selection of exact quotations; source-and-draft workspace with verified quotation insertion | Exact quote checks do not establish relevance, recall, completeness or semantic search quality |
 | Voice | Optional local WAV transcription, explicit Mac recording, transcript review and requested system speech playback | Synthetic audio and UI tests; no claim of real microphone reliability or multilingual accuracy |
 | Camera and gallery | Two independently configured MJPEG sources; optional consented local face matching; encrypted named gallery | Synthetic streams/model smoke tests and mock descriptors; no real-person accuracy or liveness validation |
 | OpenAI cloud | Optional text-only provider, user-owned macOS Keychain credential and consent for each request | Mock SSE tests only; no paid-call verification; no silent cloud fallback |
@@ -68,6 +68,22 @@ With no `--data-dir`, Qt chooses the platform application-data directory
 (`~/Library/Application Support/Aekam/Miwl 2` on macOS). One process can open a
 workspace at a time. Keep private workspaces outside version control.
 
+### Research with local sources
+
+Open **Documents**, import selected text or Markdown files, and search for a
+passage. Wide windows show sources beside the current editable draft; compact
+windows switch between Sources and Draft without creating another draft.
+**Insert quotation in draft** adds the passage at the insertion point with
+its source filename, line range and imported snapshot SHA-256. Existing text
+is retained, including selected text. The same session autosave and failure
+guards apply in both draft views.
+
+Insertion uses the indexed snapshot and requires the result to still belong to
+a selected source. It does not call a model. The provenance is plain text, not
+a live link in the saved draft; lines describe the imported snapshot, which may
+differ from the current original file. Search remains keyword based. See the
+[research workspace verification](docs/RESEARCH_WORKSPACE.md).
+
 ### Optional local Ollama
 
 Install Ollama from its [official source](https://ollama.com/download).
@@ -110,7 +126,7 @@ is no live cloud model discovery, price estimate or cloud accuracy claim.
 .venv/bin/mypy
 ```
 
-The source checkpoint has **152 passing tests**, Ruff check/format and strict
+The source-and-draft checkpoint has **181 passing tests**, Ruff check/format and strict
 mypy across 21 source modules. Tests use temporary workspaces and synthetic
 loopback servers; environments that prohibit localhost socket binds must allow
 those fixture servers. Tests do not require microphones, cameras, actual API

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
 from collections.abc import Iterator
 from datetime import datetime, timedelta
@@ -878,6 +879,7 @@ def test_documents_screen_search_citation_compact_and_confirmed_removal(
         button = item(ui, name)
         position = button.mapToScene(QPointF(0, 0))
         assert 0 <= position.x() < ui.width() - button.width(), name
+    click(app, ui, "documentLibraryToggle")
     click(app, ui, "documentDelete" + context.documents[0]["id"])
     dialog = ui.findChild(QObject, "documentRemoveDialog")
     assert dialog is not None and dialog.property("opened")
@@ -1187,3 +1189,102 @@ def test_custom_vertical_scrollbars_track_the_viewport_right_edge(
     position = bar.mapToScene(QPointF(0, 0))
     panel_position = panel.mapToScene(QPointF(0, 0))
     assert position.x() >= panel_position.x() + panel.width() - 16
+
+
+def test_research_workspace_inserts_verified_quote_without_losing_pending_draft(
+    app: QGuiApplication, bridge: WorkspaceBridge, ui: QQuickWindow, tmp_path: Path
+) -> None:
+    context = import_synthetic_document(app, bridge, tmp_path)
+    click(app, ui, "documentsTab")
+    context.search("respondents")
+    settle_documents(app, context)
+    row = context.results[0]
+    draft = item(ui, "researchDraftEditor")
+    pending = "My unsaved introduction."
+    draft.setProperty("text", pending)
+    draft.setProperty("cursorPosition", len(pending))
+    click(app, ui, "insertQuotation" + str(row["id"]))
+    result = str(draft.property("text"))
+    assert result.startswith(pending)
+    assert row["text"].strip() in result
+    assert row["sha256"] in result and row["name"] in result
+    assert "lines 1–1" in result and row["sourcePath"] not in result
+    assert bridge.resultText == result
+    assert bridge.service.store.session(bridge.currentSessionId)["result"] == result
+    assert Store(bridge.service.store.path).session(bridge.currentSessionId)["result"] == result
+    click(app, ui, "draftTab")
+    assert item(ui, "resultEditor").property("text") == result
+    assert bridge.service.store.messages(bridge.currentSessionId) == []
+
+
+def test_research_insert_obeys_failed_save_guard(
+    app: QGuiApplication,
+    bridge: WorkspaceBridge,
+    ui: QQuickWindow,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = import_synthetic_document(app, bridge, tmp_path)
+    bridge.updateResult("Saved draft")
+    click(app, ui, "documentsTab")
+    context.search("respondents")
+    settle_documents(app, context)
+    draft = item(ui, "researchDraftEditor")
+    draft.setProperty("text", "Unsaved research edit")
+    row = context.results[0]
+
+    def denied(*args: object) -> None:
+        raise sqlite3.OperationalError("Fictional save failure")
+
+    with monkeypatch.context() as failure:
+        failure.setattr(bridge.service.store, "update_result", denied)
+        click(app, ui, "insertQuotation" + str(row["id"]))
+        assert draft.property("text") == "Unsaved research edit"
+        assert bridge.resultText == "Saved draft"
+        assert bridge.editorSaveFailed
+        assert not ui.close()
+        assert ui.isVisible()
+    draft.setProperty("cursorPosition", len(str(draft.property("text"))))
+    click(app, ui, "insertQuotation" + str(row["id"]))
+    assert bridge.resultText.startswith("Unsaved research edit")
+    assert not bridge.editorSaveFailed
+
+
+def test_research_quote_uses_snapshot_and_rejects_replaced_or_unselected_evidence(
+    app: QGuiApplication, bridge: WorkspaceBridge, ui: QQuickWindow, tmp_path: Path
+) -> None:
+    context = import_synthetic_document(app, bridge, tmp_path)
+    context.search("respondents")
+    settle_documents(app, context)
+    row = context.results[0]
+    source = Path(row["sourcePath"])
+    source.write_text("Changed original, not imported yet.")
+    assert row["sha256"] in context.quotationForDraft(row["citation"])
+    context.index.import_file(source)
+    assert context.quotationForDraft(row["citation"]) == ""
+    assert context.error
+    assert context.quotationForDraft("doc://chunk/9999999") == ""
+    context.selectDocument(row["documentId"], False)
+    assert context.quotationForDraft(row["citation"]) == ""
+
+
+def test_research_compact_switching_shares_one_draft_and_keeps_insertion(
+    app: QGuiApplication, bridge: WorkspaceBridge, ui: QQuickWindow, tmp_path: Path
+) -> None:
+    context = import_synthetic_document(app, bridge, tmp_path)
+    ui.resize(960, 720)
+    click(app, ui, "documentsTab")
+    context.search("respondents")
+    settle_documents(app, context)
+    assert item(ui, "researchSourcesTab").isVisible()
+    assert not item(ui, "researchDraftEditor").isVisible()
+    click(app, ui, "insertQuotation" + str(context.results[0]["id"]))
+    draft = item(ui, "researchDraftEditor")
+    assert draft.isVisible() and "Imported snapshot SHA-256:" in str(draft.property("text"))
+    draft.setProperty("text", "A compact edit")
+    click(app, ui, "researchSourcesTab")
+    assert item(ui, "documentsQuestion").isVisible()
+    click(app, ui, "researchDraftTab")
+    assert draft.property("text") == "A compact edit"
+    QTest.qWait(400)
+    assert bridge.resultText == "A compact edit"
